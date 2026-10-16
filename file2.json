@@ -1,0 +1,52 @@
+[
+    {
+        "user_id": "1",
+        "name": "Alice Johnson",
+        "email": "alice.johnson@example.com"
+    },
+    {
+        "user_id": "2",
+        "name": "Brian Smith",
+        "email": "brian.smith@example.com"
+    },
+    {
+        "user_id": "3",
+        "name": "Carol Davis",
+        "email": "carol.davis@example.com"
+    },
+    {
+        "user_id": "4",
+        "name": "Daniel Wilson",
+        "email": "daniel.wilson@example.com"
+    },
+    {
+        "user_id": "5",
+        "name": "Eva Martinez",
+        "email": "eva.martinez@example.com"
+    },
+    {
+        "user_id": "6",
+        "name": "Frank Brown",
+        "email": "frank.brown@example.com"
+    },
+    {
+        "user_id": "7",
+        "name": "Grace Taylor",
+        "email": "grace.taylor@example.com"
+    },
+    {
+        "user_id": "8",
+        "name": "Henry Anderson",
+        "email": "henry.anderson@example.com"
+    },
+    {
+        "user_id": "9",
+        "name": "Isabella Thomas",
+        "email": "isabella.thomas@example.com"
+    },
+    {
+        "user_id": "10",
+        "name": "Jacob Moore",
+        "email": "jacob.moore@example.com"
+    }
+]
