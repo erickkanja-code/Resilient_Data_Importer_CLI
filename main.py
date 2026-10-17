@@ -4,12 +4,20 @@ from dataclasses import dataclass
 import logging
 from pathlib import Path
 
-logging.basicConfig(filename="app.log", 
-                    encoding='utf-8', 
-                    filemode='a',
-                    level=10, 
-                    format="{asctime} - {levelname} - {message}", style='{'
-                    )
+logger = logging.getLogger("console_and _file_logger")
+file_logger = logging.getLogger("file_logger")
+console_handler = logging.StreamHandler()
+file_handler = logging.FileHandler("app.log", mode='a', encoding='utf-8')
+formatter = logging.Formatter(
+    "{asctime} - {levelname} - {message}",
+    style="{",
+    datefmt="%Y-%m-%d %H:%M",
+)
+console_handler.setFormatter(formatter)
+file_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
+file_logger.addHandler(file_handler)
 
 @dataclass
 class User:
@@ -32,6 +40,14 @@ def check_duplicate(new_user, json_content):
                 raise DuplicateUserError(f"{new_user.name} has already been saved to the database.")
     else:
         return
+    
+def check_if_csv_exists(csv_name):
+    if not Path(csv_name).exists():
+        error_message = "The CSV file could not be found"
+        logger.error(error_message)
+        
+        raise ImporterError(error_message)
+
 
 if Path("db.json").exists():
     with open("db.json", "r") as file:
@@ -39,30 +55,30 @@ if Path("db.json").exists():
 else:
     with open("db.json", "w") as file:
         json_content = []
+        json.dump(json_content, file)
 
+csv_name = "users.csv"
+check_if_csv_exists(csv_name)
+if not csv_name.endswith('csv'):
+    raise FileFormatError()
 
-cleaned_csv_content =[]
-with open("users2.csv", 'r', newline="") as file:
+with open(csv_name, 'r', newline="") as file:
     reader = csv.DictReader(file)
     for row in reader:
         new_user = User(row['user_id'], row['name'], row['email'])
-        # if json_content:
-        #     for record in json_content:
-        #         try:
-        #             if new_user.user_id == record['user_id']:
-        #                 duplicate = True
-        #                 # Handle duplicate. (Log and then throw exception)
-        #                 raise DuplicateUserError(f"{new_user.name} has already been saved to the database.")
         try:
             check_duplicate(new_user, json_content)
         except DuplicateUserError as error:
-            logging.error(error) 
+            file_logger.error(error) 
             continue
-        cleaned_csv_content.append(row)
+        json_content.append(row)
+
+    
+
 
         
-with open("db.json", 'a') as file2:
-    json.dump(cleaned_csv_content, file2, indent=4)  
+with open("db.json", 'w') as file2:
+    json.dump(json_content, file2, indent=4)  
 
 
 
