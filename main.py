@@ -2,6 +2,7 @@ import csv
 import json
 from dataclasses import dataclass
 import logging
+from pathlib import Path
 
 logging.basicConfig(filename="app.log", 
                     encoding='utf-8', 
@@ -24,38 +25,46 @@ class ImporterError(Exception):
 class FileFormatError(Exception):
     pass
 
+def check_duplicate(new_user, json_content):
+    if json_content:
+        for record in json_content:
+            if new_user.user_id == record['user_id']:
+                raise DuplicateUserError(f"{new_user.name} has already been saved to the database.")
+    else:
+        return
 
-
-with open("file2.json", "r") as file:
-    json_content = json.load(file)
+if Path("db.json").exists():
+    with open("db.json", "r") as file:
+        json_content = json.load(file)
+else:
+    with open("db.json", "w") as file:
+        json_content = []
 
 
 cleaned_csv_content =[]
-with open("users.csv", 'r', newline="") as file:
+with open("users2.csv", 'r', newline="") as file:
     reader = csv.DictReader(file)
     for row in reader:
         new_user = User(row['user_id'], row['name'], row['email'])
-        duplicate = False
-        if json_content:
-            for record in json_content:
-                try:
-                    if new_user.user_id == record['user_id']:
-                        duplicate = True
-                        # Handle duplicate. (Log and then throw exception)
-                        raise DuplicateUserError(f"{new_user.name} has already been saved to the database.")
+        # if json_content:
+        #     for record in json_content:
+        #         try:
+        #             if new_user.user_id == record['user_id']:
+        #                 duplicate = True
+        #                 # Handle duplicate. (Log and then throw exception)
+        #                 raise DuplicateUserError(f"{new_user.name} has already been saved to the database.")
+        try:
+            check_duplicate(new_user, json_content)
+        except DuplicateUserError as error:
+            logging.error(error) 
+            continue
+        cleaned_csv_content.append(row)
 
-                except DuplicateUserError as error:
-                    logging.error(error) 
-                    break
-            if not duplicate:
-                cleaned_csv_content.append(row)
-        else:
-            cleaned_csv_content.append(row)
         
-with open("file2.json", 'w') as file2:
+with open("db.json", 'a') as file2:
     json.dump(cleaned_csv_content, file2, indent=4)  
 
-print(cleaned_csv_content)
+
 
 
 
