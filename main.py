@@ -1,16 +1,16 @@
 import csv
 import json
-from dataclasses import dataclass
 import logging
-from pathlib import Path
 import sys
-
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger("console_and _file_logger")
 file_logger = logging.getLogger("file_logger")
 
 console_handler = logging.StreamHandler()
-file_handler = logging.FileHandler("app.log", mode='a', encoding='utf-8')
+file_handler = logging.FileHandler("app.log", mode="a", encoding="utf-8")
 
 formatter = logging.Formatter(
     "{asctime} - {levelname} - {message}",
@@ -54,7 +54,9 @@ class FileFormatError(Exception):
     """Raised when the supplied file has an unsupported format."""
 
 
-def check_duplicate(new_user, json_content):
+def check_duplicate(
+    new_user: User, json_content: list[dict[str, Any]]
+) -> None:
     """Check whether a user already exists in the database.
 
     Args:
@@ -66,13 +68,15 @@ def check_duplicate(new_user, json_content):
     """
     if json_content:
         for record in json_content:
-            if new_user.user_id == record['user_id']:
-                raise DuplicateUserError(f"{new_user.name} has already been saved to the database.")
+            if new_user.user_id == record["user_id"]:
+                raise DuplicateUserError(
+                    f"{new_user.name} has already been saved to the database."
+                )
     else:
         return
 
 
-def check_if_csv_exists(csv_name):
+def check_if_csv_exists(csv_name: str) -> None:
     """Check whether the specified CSV file exists.
 
     Args:
@@ -87,7 +91,7 @@ def check_if_csv_exists(csv_name):
         raise ImporterError(error_message)
 
 
-def check_file_format(csv_name):
+def check_file_format(csv_name: str) -> None:
     """Validate the file extension.
 
     Args:
@@ -105,21 +109,21 @@ def check_file_format(csv_name):
 if __name__ == "__main__":
     if Path("db.json").exists():
         with open("db.json", "r") as file:
-            json_content = json.load(file)
+            json_content: list[dict[str, Any]] = json.load(file)
     else:
         with open("db.json", "w") as file:
             json_content = []
             json.dump(json_content, file)
 
-    csv_name = sys.argv[1]
+    csv_name: str = sys.argv[1]
     check_if_csv_exists(csv_name)
     check_file_format(csv_name)
 
-    with open(csv_name, 'r', newline="") as file:
+    with open(csv_name, "r", newline="") as file:
         reader = csv.DictReader(file)
 
         for row in reader:
-            new_user = User(row['user_id'], row['name'], row['email'])
+            new_user = User(row["user_id"], row["name"], row["email"])
 
             try:
                 check_duplicate(new_user, json_content)
@@ -127,15 +131,25 @@ if __name__ == "__main__":
                 file_logger.info(error)
                 continue
 
-            if row['user_id'] and row["name"] and row['email']:
-                if not isinstance(row['user_id'], str) or not isinstance(row["name"], str) or not isinstance(row['email'], str):
-                    file_logger.error(f"Record {row['user_id']} has some wrong/malformed fields. Not recorded in database")
+            if row["user_id"] and row["name"] and row["email"]:
+                if (
+                    not isinstance(row["user_id"], str)
+                    or not isinstance(row["name"], str)
+                    or not isinstance(row["email"], str)
+                ):
+                    file_logger.error(
+                        f"Record {row['user_id']} has some wrong/malformed fields. Not recorded in database"
+                    )
                     continue
             else:
-                file_logger.error(f"Record {row['user_id']} has some empty cells. Not recorded in database")
+                file_logger.error(
+                    f"Record {row['user_id']} has some empty cells. Not recorded in database"
+                )
                 continue
 
-            json_content.append({'user_id': row['user_id'], 'name': row['name'], 'email': row['email']})
+            json_content.append(
+                {"user_id": row["user_id"], "name": row["name"], "email": row["email"]}
+            )
 
-    with open("db.json", 'w') as file2:
+    with open("db.json", "w") as file2:
         json.dump(json_content, file2, indent=4)
