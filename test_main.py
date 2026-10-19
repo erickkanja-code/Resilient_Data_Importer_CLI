@@ -1,103 +1,226 @@
+
+import json
+import runpy
+import sys
+from pathlib import Path
+
 import pytest
-from unittest.mock import mock_open
 
 from main import (
     User,
-    check_duplicate,
-    check_if_csv_exists,
-    check_file_format,
     DuplicateUserError,
     ImporterError,
     FileFormatError,
+    check_duplicate,
+    check_if_csv_exists,
+    check_file_format,
+    main,
 )
 
 
-# Test 1: Check that a User object stores its attributes correctly.
 def test_user_creation():
-    test_user = User("10", "Erick", "erick@example.com")
+    user = User("1", "Erick", "erick@example.com")
 
-    assert test_user.user_id == "10"
-    assert test_user.name == "Erick"
-    assert test_user.email == "erick@example.com"
+    assert user.user_id == "1"
+    assert user.name == "Erick"
+    assert user.email == "erick@example.com"
 
 
-# Test 2: Check that duplicate users are rejected.
 def test_duplicate_user():
-    test_user = User("10", "Erick", "erick@example.com")
+    user = User("1", "Erick", "erick@example.com")
+    database = [{"user_id": "1", "name": "Erick", "email": "erick@example.com"}]
 
-    json_content = [
-        {
-            "user_id": "10",
-            "name": "Erick",
-            "email": "erick@example.com",
-        }
-    ]
-
-    # The function should raise this exception for a duplicate ID.
     with pytest.raises(DuplicateUserError):
-        check_duplicate(test_user, json_content)
+        check_duplicate(user, database)
 
 
-# Test 3: Check that a new user is allowed.
 def test_new_user():
-    test_user = User("20", "Brian", "brian@example.com")
+    user = User("2", "Jane", "jane@example.com")
 
-    json_content = [
-        {
-            "user_id": "10",
-            "name": "Erick",
-            "email": "erick@example.com",
-        }
-    ]
-
-    # No exception should be raised because ID 20 is not in the database.
-    check_duplicate(test_user, json_content)
+    check_duplicate(user, [])
 
 
-# Test 4: Check that a missing CSV file raises an exception.
-def test_missing_csv_file():
+def test_non_duplicate_user():
+    user = User("2", "Jane", "jane@example.com")
+    database = [{"user_id": "1", "name": "Erick", "email": "erick@example.com"}]
+
+    check_duplicate(user, database)
+
+
+def test_missing_csv_file(tmp_path):
+    missing_file = tmp_path / "missing.csv"
+
     with pytest.raises(ImporterError):
-        check_if_csv_exists("missing_file.csv")
+        check_if_csv_exists(str(missing_file))
 
 
-# Test 5: Check that an incorrect file extension is rejected.
+def test_csv_file_exists(tmp_path):
+    csv_file = tmp_path / "users.csv"
+    csv_file.write_text("user_id,name,email\n", encoding="utf-8")
+
+    check_if_csv_exists(str(csv_file))
+
+
 def test_incorrect_file_format():
     with pytest.raises(FileFormatError):
         check_file_format("users.txt")
 
 
-# Test 6: Use a fixture to create a temporary CSV file.
-@pytest.fixture
-def csv_file(tmp_path):
-    # tmp_path is a temporary directory provided by pytest.
-    file_path = tmp_path / "users.csv"
+def test_correct_file_format():
+    check_file_format("users.csv")
 
-    file_path.write_text(
-        "user_id,name,email\n10,Erick,erick@example.com\n",
+
+def test_uppercase_csv_extension():
+    check_file_format("users.CSV")
+
+
+def test_main_without_argument(monkeypatch):
+    # Pretend the user ran the program without providing a CSV filename.
+    monkeypatch.setattr(sys, "argv", ["main.py"])
+
+    with pytest.raises(ImporterError):
+        main()
+
+
+def test_main_creates_database(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["main.py", "users.csv"])
+
+    Path("users.csv").write_text(
+        "user_id,name,email\n1,Erick,erick@example.com\n",
         encoding="utf-8",
     )
 
-    return file_path
+    main()
+
+    data = json.loads(Path("db.json").read_text(encoding="utf-8"))
+    assert len(data) == 1
+    assert data[0]["user_id"] == "1"
 
 
-def test_csv_file_exists(csv_file):
-    # The fixture gives this test the path to the temporary CSV file.
-    check_if_csv_exists(str(csv_file))
+def test_main_adds_to_existing_database(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["main.py", "users.csv"])
 
-
-# Test 7: Mock file opening so we don't need to open a real file.
-def test_mock_file_open(mocker):
-    fake_file = mock_open(
-        read_data="user_id,name,email\n10,Erick,erick@example.com\n"
+    Path("db.json").write_text(
+        json.dumps([{
+            "user_id": "1",
+            "name": "Erick",
+            "email": "erick@example.com",
+        }]),
+        encoding="utf-8",
+    )
+    Path("users.csv").write_text(
+        "user_id,name,email\n2,Jane,jane@example.com\n",
+        encoding="utf-8",
     )
 
-    # Replace open() with our mock for the duration of this test.
-    mocker.patch("builtins.open", fake_file)
+    main()
 
-    with open("users.csv", "r", encoding="utf-8") as file:
-        content = file.read()
+    data = json.loads(Path("db.json").read_text(encoding="utf-8"))
+    assert len(data) == 2
 
-    assert "Erick" in content
-    fake_file.assert_called_once_with(
-        "users.csv", "r", encoding="utf-8"
+
+def test_main_skips_duplicate(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["main.py", "users.csv"])
+
+    Path("db.json").write_text(
+        json.dumps([{
+            "user_id": "1",
+            "name": "Erick",
+            "email": "erick@example.com",
+        }]),
+        encoding="utf-8",
     )
+    Path("users.csv").write_text(
+        "user_id,name,email\n1,Erick,erick@example.com\n",
+        encoding="utf-8",
+    )
+
+    main()
+
+    data = json.loads(Path("db.json").read_text(encoding="utf-8"))
+    assert len(data) == 1
+
+
+def test_main_skips_empty_fields(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["main.py", "users.csv"])
+
+    Path("users.csv").write_text(
+        "user_id,name,email\n1,,erick@example.com\n",
+        encoding="utf-8",
+    )
+
+    main()
+
+    data = json.loads(Path("db.json").read_text(encoding="utf-8"))
+    assert data == []
+
+
+def test_main_missing_file(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["main.py", "missing.csv"])
+
+    with pytest.raises(ImporterError):
+        main()
+
+
+def test_main_wrong_extension(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["main.py", "users.txt"])
+    Path("users.txt").write_text("some data", encoding="utf-8")
+
+    with pytest.raises(FileFormatError):
+        main()
+
+
+def test_main_missing_headers(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["main.py", "users.csv"])
+    Path("users.csv").write_text("username,email\nErick,erick@example.com\n",
+                                 encoding="utf-8")
+
+    with pytest.raises(ImporterError):
+        main()
+
+
+def test_main_empty_csv(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["main.py", "users.csv"])
+    Path("users.csv").write_text("", encoding="utf-8")
+
+    with pytest.raises(ImporterError):
+        main()
+
+
+def test_main_skips_row_with_missing_column(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["main.py", "users.csv"])
+    Path("users.csv").write_text(
+        "user_id,name,email\n1,Erick\n",
+        encoding="utf-8",
+    )
+
+    main()
+
+    data = json.loads(Path("db.json").read_text(encoding="utf-8"))
+    assert data == []
+
+
+def test_script_entry_point(tmp_path, monkeypatch):
+    # Run main.py as if it had been started from the terminal.
+    monkeypatch.chdir(tmp_path)
+    Path("users.csv").write_text(
+        "user_id,name,email\n1,Erick,erick@example.com\n",
+        encoding="utf-8",
+    )
+
+    main_file = str(Path(main.__code__.co_filename).resolve())
+    monkeypatch.setattr(sys, "argv", ["main.py", "users.csv"])
+
+    runpy.run_path(main_file, run_name="__main__")
+
+    data = json.loads(Path("db.json").read_text(encoding="utf-8"))
+    assert len(data) == 1

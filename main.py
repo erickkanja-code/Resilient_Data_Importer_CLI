@@ -1,3 +1,4 @@
+
 import csv
 import json
 import logging
@@ -6,8 +7,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger("console_and _file_logger")
+
+logger = logging.getLogger("console_and_file_logger")
 file_logger = logging.getLogger("file_logger")
+
+logger.setLevel(logging.INFO)
+file_logger.setLevel(logging.INFO)
 
 console_handler = logging.StreamHandler()
 file_handler = logging.FileHandler("app.log", mode="a", encoding="utf-8")
@@ -23,19 +28,12 @@ file_handler.setFormatter(formatter)
 
 logger.addHandler(console_handler)
 logger.addHandler(file_handler)
-
 file_logger.addHandler(file_handler)
 
 
 @dataclass
 class User:
-    """Represent a user record.
-
-    Attributes:
-        user_id: The unique identifier assigned to the user.
-        name: The user's name.
-        email: The user's email address.
-    """
+    """Represent a user record."""
 
     user_id: str
     name: str
@@ -47,7 +45,7 @@ class DuplicateUserError(Exception):
 
 
 class ImporterError(Exception):
-    """Raised when an error occurs during the import process."""
+    """Raised when an error occurs during importing."""
 
 
 class FileFormatError(Exception):
@@ -57,33 +55,30 @@ class FileFormatError(Exception):
 def check_duplicate(
     new_user: User, json_content: list[dict[str, Any]]
 ) -> None:
-    """Check whether a user already exists in the database.
+    """Check whether a user ID already exists.
 
     Args:
-        new_user: The User object to check.
-        json_content: The existing user records loaded from the JSON database.
+        new_user: The user being imported.
+        json_content: Existing database records.
 
     Raises:
-        DuplicateUserError: If the user's ID already exists in the database.
+        DuplicateUserError: If the user ID already exists.
     """
-    if json_content:
-        for record in json_content:
-            if new_user.user_id == record["user_id"]:
-                raise DuplicateUserError(
-                    f"{new_user.name} has already been saved to the database."
-                )
-    else:
-        return
+    for record in json_content:
+        if new_user.user_id == record["user_id"]:
+            raise DuplicateUserError(
+                f"{new_user.name} has already been saved to the database."
+            )
 
 
 def check_if_csv_exists(csv_name: str) -> None:
-    """Check whether the specified CSV file exists.
+    """Check whether the CSV file exists.
 
     Args:
         csv_name: The path to the CSV file.
 
     Raises:
-        ImporterError: If the specified file does not exist.
+        ImporterError: If the file does not exist.
     """
     if not Path(csv_name).exists():
         error_message = "The CSV file could not be found"
@@ -92,38 +87,56 @@ def check_if_csv_exists(csv_name: str) -> None:
 
 
 def check_file_format(csv_name: str) -> None:
-    """Validate the file extension.
+    """Check whether the file has a CSV extension.
 
     Args:
-        csv_name: The path or name of the file to validate.
+        csv_name: The path to the file.
 
     Raises:
-        FileFormatError: If the file does not have a CSV extension.
+        FileFormatError: If the extension is not CSV.
     """
-    if not csv_name.endswith("csv"):
+    if Path(csv_name).suffix.lower() != ".csv":
         error_message = "Incorrect format. Upload csv file."
         logger.error(error_message)
         raise FileFormatError(error_message)
 
 
-if __name__ == "__main__":
-    if Path("db.json").exists():
-        with open("db.json", "r") as file:
+def main() -> None:
+    """Import CSV user records into the JSON database."""
+    if len(sys.argv) < 2:
+        logger.error("Please provide a CSV filename.")
+        raise ImporterError("Please provide a CSV filename.")
+
+    database_path = Path("db.json")
+
+    if database_path.exists():
+        with open(database_path, "r", encoding="utf-8") as file:
             json_content: list[dict[str, Any]] = json.load(file)
     else:
-        with open("db.json", "w") as file:
-            json_content = []
-            json.dump(json_content, file)
+        json_content = []
 
-    csv_name: str = sys.argv[1]
+    csv_name = sys.argv[1]
+
     check_if_csv_exists(csv_name)
     check_file_format(csv_name)
 
-    with open(csv_name, "r", newline="") as file:
+    with open(csv_name, "r", newline="", encoding="utf-8") as file:
         reader = csv.DictReader(file)
 
+        required_fields = {"user_id", "name", "email"}
+
+        if reader.fieldnames is None or not required_fields.issubset(
+            reader.fieldnames
+        ):
+            logger.error("CSV file is missing required headers.")
+            raise ImporterError("CSV file is missing required headers.")
+
         for row in reader:
-            new_user = User(row["user_id"], row["name"], row["email"])
+            new_user = User(
+                row.get("user_id") or "",
+                row.get("name") or "",
+                row.get("email") or "",
+            )
 
             try:
                 check_duplicate(new_user, json_content)
@@ -131,25 +144,26 @@ if __name__ == "__main__":
                 file_logger.info(error)
                 continue
 
-            if row["user_id"] and row["name"] and row["email"]:
-                if (
-                    not isinstance(row["user_id"], str)
-                    or not isinstance(row["name"], str)
-                    or not isinstance(row["email"], str)
-                ):
-                    file_logger.error(
-                        f"Record {row['user_id']} has some wrong/malformed fields. Not recorded in database"
-                    )
-                    continue
-            else:
+            if not new_user.user_id or not new_user.name or not new_user.email:
                 file_logger.error(
-                    f"Record {row['user_id']} has some empty cells. Not recorded in database"
+                    f"Record {new_user.user_id} has empty fields. "
+                    "Not recorded in database."
                 )
                 continue
 
             json_content.append(
-                {"user_id": row["user_id"], "name": row["name"], "email": row["email"]}
+                {
+                    "user_id": new_user.user_id,
+                    "name": new_user.name,
+                    "email": new_user.email,
+                }
             )
 
-    with open("db.json", "w") as file2:
-        json.dump(json_content, file2, indent=4)
+    with open(database_path, "w", encoding="utf-8") as file:
+        json.dump(json_content, file, indent=4)
+
+    logger.info("Import completed successfully.")
+
+
+if __name__ == "__main__":
+    main()
